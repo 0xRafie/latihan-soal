@@ -7,6 +7,16 @@ import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { DEFAULT_QUIZZES, MOCK_ACTIVITIES } from './data/defaultQuizzes';
 import { Quiz, Attempt, QuestionType } from './types';
+import { isSupabaseConfigured } from './lib/supabase';
+import {
+  clearAttempts,
+  fetchAttempts,
+  fetchQuizzes,
+  insertAttempt,
+  subscribeToGroupData,
+  upsertQuiz,
+  upsertQuizzes,
+} from './lib/sharedData';
 
 // Importing Custom Layout Components
 import Login from './components/Login';
@@ -71,8 +81,58 @@ export default function App() {
 
   const [activeQuizId, setActiveQuizId] = useState<string | null>(null);
   const [currentAttempt, setCurrentAttempt] = useState<Attempt | null>(null);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [syncNotice, setSyncNotice] = useState('');
 
-  // Sync state modifications with LocalStorage
+  const loadSharedGroupData = async (groupCode: string) => {
+    if (!isSupabaseConfigured) return;
+
+    setIsSyncing(true);
+    setSyncNotice('');
+
+    try {
+      const [remoteQuizzes, remoteAttempts] = await Promise.all([
+        fetchQuizzes(groupCode),
+        fetchAttempts(groupCode),
+      ]);
+
+      if (remoteQuizzes && remoteQuizzes.length > 0) {
+        setQuizzes(remoteQuizzes);
+      } else {
+        await upsertQuizzes(DEFAULT_QUIZZES, groupCode);
+        setQuizzes(DEFAULT_QUIZZES);
+      }
+
+      if (remoteAttempts) {
+        setAttempts(remoteAttempts);
+      }
+    } catch (error) {
+      console.error('Failed to sync Supabase data', error);
+      setSyncNotice('Gagal sinkron Supabase. Data lokal browser tetap dipakai sementara.');
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  const reloadQuizzes = async (groupCode: string) => {
+    try {
+      const remoteQuizzes = await fetchQuizzes(groupCode);
+      if (remoteQuizzes) setQuizzes(remoteQuizzes);
+    } catch (error) {
+      console.error('Failed to reload quizzes', error);
+    }
+  };
+
+  const reloadAttempts = async (groupCode: string) => {
+    try {
+      const remoteAttempts = await fetchAttempts(groupCode);
+      if (remoteAttempts) setAttempts(remoteAttempts);
+    } catch (error) {
+      console.error('Failed to reload attempts', error);
+    }
+  };
+
+  // Sync state modifications with LocalStorage as offline fallback
   useEffect(() => {
     try {
       localStorage.setItem('latih_soal_quizzes', JSON.stringify(quizzes));
@@ -88,6 +148,18 @@ export default function App() {
       console.error('Failed to write attempts to cache', e);
     }
   }, [attempts]);
+
+  useEffect(() => {
+    if (!session || !isSupabaseConfigured) return;
+
+    void loadSharedGroupData(session.groupCode);
+
+    return subscribeToGroupData(
+      session.groupCode,
+      () => void reloadQuizzes(session.groupCode),
+      () => void reloadAttempts(session.groupCode)
+    );
+  }, [session?.groupCode]);
 
   // Auth triggers
   const handleLogin = (username: string, groupCode: string) => {
@@ -113,7 +185,7 @@ export default function App() {
     setActiveView('runner');
   };
 
-  const handleFinishedQuizAttempt = (
+  const handleFinishedQuizAttempt = async (
     answers: Record<string, string>,
     flags: Record<string, boolean>,
     durationSpentSeconds: number
@@ -156,15 +228,42 @@ export default function App() {
     setAttempts((prev) => [...prev, newAttempt]);
     setCurrentAttempt(newAttempt);
     setActiveView('results');
+
+    if (isSupabaseConfigured) {
+      try {
+        await insertAttempt(newAttempt, session.groupCode);
+      } catch (error) {
+        console.error('Failed to save attempt to Supabase', error);
+        setSyncNotice('Nilai tersimpan lokal, tetapi gagal dikirim ke Supabase.');
+      }
+    }
   };
 
-  const handleAddNewPublishedQuiz = (newQuiz: Quiz) => {
+  const handleAddNewPublishedQuiz = async (newQuiz: Quiz) => {
     setQuizzes((prev) => [newQuiz, ...prev]);
+
+    if (session && isSupabaseConfigured) {
+      try {
+        await upsertQuiz(newQuiz, session.groupCode);
+      } catch (error) {
+        console.error('Failed to save quiz to Supabase', error);
+        setSyncNotice('Kuis tersimpan lokal, tetapi gagal dikirim ke Supabase.');
+      }
+    }
   };
 
-  const handleClearAttemptsHistory = () => {
+  const handleClearAttemptsHistory = async () => {
     if (window.confirm('Apakah Anda yakin ingin menghapus seluruh riwayat aktivitas nilai kelompok? Tindakan ini tidak dapat dibatalkan.')) {
       setAttempts([]);
+
+      if (session && isSupabaseConfigured) {
+        try {
+          await clearAttempts(session.groupCode);
+        } catch (error) {
+          console.error('Failed to clear attempts in Supabase', error);
+          setSyncNotice('Riwayat lokal sudah kosong, tetapi gagal menghapus data Supabase.');
+        }
+      }
     }
   };
 
@@ -173,8 +272,17 @@ export default function App() {
     setActiveView('collab');
   };
 
-  const handleSaveCollabQuiz = (updatedQuiz: Quiz) => {
+  const handleSaveCollabQuiz = async (updatedQuiz: Quiz) => {
     setQuizzes((prev) => prev.map((q) => (q.id === updatedQuiz.id ? updatedQuiz : q)));
+
+    if (session && isSupabaseConfigured) {
+      try {
+        await upsertQuiz(updatedQuiz, session.groupCode);
+      } catch (error) {
+        console.error('Failed to update quiz in Supabase', error);
+        setSyncNotice('Perubahan tersimpan lokal, tetapi gagal dikirim ke Supabase.');
+      }
+    }
   };
 
   const handleNavigateToHome = () => {
@@ -200,6 +308,14 @@ export default function App() {
 
       {/* Main Content Router */}
       <main className="flex-1">
+        {session && activeView === 'dashboard' && (isSyncing || syncNotice) && (
+          <div className="max-w-7xl mx-auto px-4 pt-4">
+            <div className="rounded-xl border border-natural-border bg-white px-4 py-3 text-xs font-semibold text-natural-text-muted">
+              {isSyncing ? 'Menyinkronkan data grup dari Supabase...' : syncNotice}
+            </div>
+          </div>
+        )}
+
         <AnimatePresence mode="wait">
           {activeView === 'login' && (
             <motion.div

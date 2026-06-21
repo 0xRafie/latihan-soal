@@ -161,7 +161,7 @@ export default function Login({ onLogin }: LoginProps) {
         </div>
 
         <p className="text-center text-xs text-natural-text-muted mt-6 font-mono">
-          LatihSoal v1.0.0 • Bersifat lokal untuk tim belajar Anda.
+          LatihSoal v1.0.0 • Data grup dapat tersinkron lewat Supabase.
         </p>
       </motion.div>
     </div>

@@ -2,5 +2,5 @@
   "name": "LatihSoal",
   "description": "Platform latihan soal mandiri dan kolaboratif bersama teman. Mendukung tipe Pilihan Ganda, Benar/Salah, Isian Singkat, dan Essay Studi Kasus dengan visual Split-Screen, pembaca berkas ekspor/impor JSON, pengatur waktu, serta papan peringkat aktivitas belajar kelompok.",
   "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+  "majorCapabilities": []
 }
