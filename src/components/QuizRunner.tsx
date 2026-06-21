@@ -6,6 +6,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Quiz, Question, QuestionType } from '../types';
+import MarkdownView from './MarkdownView';
 import { 
   Clock, 
   Eye, 
@@ -352,40 +353,7 @@ export default function QuizRunner({ quiz, username, onFinishQuiz, onCancelQuiz 
                   Materi Studi Kasus
                 </span>
                 
-                {/* Simulated Markdown Render */}
-                <div className="space-y-4 font-sans text-natural-text-dark leading-relaxed">
-                  {currentQuestion.caseStudyText?.split('\n\n').map((block, bIdx) => {
-                    if (block.startsWith('## ')) {
-                      return <h2 key={bIdx} className="text-lg font-extrabold text-[#5A5A40] border-b border-natural-surface pb-1 mt-4">{block.substring(3)}</h2>;
-                    }
-                    if (block.startsWith('### ')) {
-                      return <h3 key={bIdx} className="text-xs font-extrabold text-natural-primary uppercase tracking-wider mt-4 mb-1">{block.substring(4)}</h3>;
-                    }
-                    if (block.startsWith('- ')) {
-                      return (
-                        <ul key={bIdx} className="list-disc pl-5 space-y-1.5 text-natural-text-dark my-2 font-sans text-xs">
-                          {block.split('\n').map((li, lIdx) => (
-                            <li key={lIdx} className="pl-1 leading-relaxed">
-                              {li.substring(2)
-                                .replace(/\*\*(.*?)\*\*/g, '$1') // remove simple bold syntax for custom render
-                              }
-                            </li>
-                          ))}
-                        </ul>
-                      );
-                    }
-                    return (
-                      <p key={bIdx} className="text-natural-text-dark text-xs sm:text-sm whitespace-pre-wrap leading-relaxed font-sans">
-                        {block.split('**').map((tok, tIdx) => {
-                          if (tIdx % 2 === 1) {
-                            return <strong key={tIdx} className="font-extrabold text-[#5A5A40] bg-natural-surface/80 px-1 rounded">{tok}</strong>;
-                          }
-                          return tok;
-                        })}
-                      </p>
-                    );
-                  })}
-                </div>
+                <MarkdownView content={currentQuestion.caseStudyText || ''} className="text-xs sm:text-sm" />
               </div>
             </div>
           )}
@@ -408,9 +376,10 @@ export default function QuizRunner({ quiz, username, onFinishQuiz, onCancelQuiz 
                     </span>
                   </div>
                   
-                  <h3 className="text-base sm:text-lg font-extrabold text-[#5A5A40] leading-snug">
-                    {currentQuestion.questionText}
-                  </h3>
+                  <MarkdownView
+                    content={currentQuestion.questionText}
+                    className="text-base sm:text-lg font-extrabold text-[#5A5A40] leading-snug"
+                  />
                 </div>
 
                 {/* 3. Question Form Types */}
@@ -439,9 +408,10 @@ export default function QuizRunner({ quiz, username, onFinishQuiz, onCancelQuiz 
                             }`}>
                               {letter}
                             </span>
-                            <span className={`text-xs sm:text-sm leading-snug ${isSelected ? 'text-natural-text-dark font-extrabold' : 'text-natural-text-dark/95'}`}>
-                              {option.substring(3).trim() || option}
-                            </span>
+                            <MarkdownView
+                              content={option.substring(3).trim() || option}
+                              className={`text-xs sm:text-sm leading-snug ${isSelected ? 'text-natural-text-dark font-extrabold' : 'text-natural-text-dark/95'}`}
+                            />
                           </button>
                         );
                       })}
@@ -600,10 +570,10 @@ export default function QuizRunner({ quiz, username, onFinishQuiz, onCancelQuiz 
               initial={{ width: 0, opacity: 0 }}
               animate={{ width: 280, opacity: 1 }}
               exit={{ width: 0, opacity: 0 }}
-              className="hidden lg:block border-l border-natural-border bg-white h-full overflow-y-auto select-none shrink-0"
+              className="hidden lg:block border-l border-natural-border bg-white h-[calc(100vh-76px)] sticky top-[76px] overflow-hidden select-none shrink-0"
               id="runner_navigation_sidebar"
             >
-              <div className="p-5 space-y-5">
+              <div className="p-5 space-y-5 h-full overflow-y-auto custom-scrollbar">
                 <div className="border-b border-natural-surface pb-3">
                   <h4 className="text-xs font-mono font-bold text-natural-text-dark uppercase tracking-wider">Navigasi Soal</h4>
                   <p className="text-[10px] text-natural-text-muted mt-0.5 leading-relaxed font-sans">Klik nomor untuk melompat ke soal secara instan.</p>
