@@ -37,17 +37,6 @@ const toQuiz = (row: QuizRow): Quiz => ({
   questions: row.questions,
 });
 
-const toQuizRow = (quiz: Quiz, groupCode: string): QuizRow => ({
-  id: quiz.id,
-  group_code: groupCode,
-  title: quiz.title,
-  description: quiz.description,
-  duration_minutes: quiz.durationMinutes,
-  created_by: quiz.createdBy,
-  created_at: quiz.createdAt,
-  questions: quiz.questions,
-});
-
 const toAttempt = (row: AttemptRow): Attempt => ({
   id: row.id,
   quizId: row.quiz_id,
@@ -106,9 +95,16 @@ export async function fetchAttempts(groupCode: string) {
 export async function upsertQuiz(quiz: Quiz, groupCode: string) {
   if (!supabase) return;
 
-  const { error } = await supabase
-    .from('quizzes')
-    .upsert(toQuizRow(quiz, groupCode), { onConflict: 'id' });
+  const { error } = await supabase.rpc('upsert_quiz_merge_questions', {
+    p_id: quiz.id,
+    p_group_code: groupCode,
+    p_title: quiz.title,
+    p_description: quiz.description,
+    p_duration_minutes: quiz.durationMinutes,
+    p_created_by: quiz.createdBy,
+    p_created_at: quiz.createdAt,
+    p_questions: quiz.questions,
+  });
 
   if (error) throw error;
 }
@@ -116,11 +112,7 @@ export async function upsertQuiz(quiz: Quiz, groupCode: string) {
 export async function upsertQuizzes(quizzes: Quiz[], groupCode: string) {
   if (!supabase || quizzes.length === 0) return;
 
-  const { error } = await supabase
-    .from('quizzes')
-    .upsert(quizzes.map((quiz) => toQuizRow(quiz, groupCode)), { onConflict: 'id' });
-
-  if (error) throw error;
+  await Promise.all(quizzes.map((quiz) => upsertQuiz(quiz, groupCode)));
 }
 
 export async function insertAttempt(attempt: Attempt, groupCode: string) {

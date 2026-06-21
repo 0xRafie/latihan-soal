@@ -85,6 +85,30 @@ export default function App() {
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncNotice, setSyncNotice] = useState('');
 
+  const mergeQuestions = (remote: Quiz['questions'], local: Quiz['questions']) => {
+    const remoteIds = new Set(remote.map((q) => q.id));
+    return [...remote, ...local.filter((q) => !remoteIds.has(q.id))];
+  };
+
+  const mergeQuizLists = (remoteQuizzes: Quiz[], localQuizzes: Quiz[]) => {
+    const mergedById = new Map(remoteQuizzes.map((q) => [q.id, q]));
+
+    for (const localQuiz of localQuizzes) {
+      const remoteQuiz = mergedById.get(localQuiz.id);
+      if (!remoteQuiz) {
+        mergedById.set(localQuiz.id, localQuiz);
+        continue;
+      }
+
+      mergedById.set(localQuiz.id, {
+        ...remoteQuiz,
+        questions: mergeQuestions(remoteQuiz.questions, localQuiz.questions),
+      });
+    }
+
+    return Array.from(mergedById.values());
+  };
+
   const loadSharedGroupData = async (groupCode: string) => {
     if (!isSupabaseConfigured) return;
 
@@ -98,7 +122,9 @@ export default function App() {
       ]);
 
       if (remoteQuizzes && remoteQuizzes.length > 0) {
-        setQuizzes(remoteQuizzes);
+        const mergedQuizzes = mergeQuizLists(remoteQuizzes, quizzes);
+        setQuizzes(mergedQuizzes);
+        await Promise.all(mergedQuizzes.map((quiz) => upsertQuiz(quiz, groupCode)));
       } else {
         const localQuizzes = quizzes.length > 0 ? quizzes : DEFAULT_QUIZZES;
         await upsertQuizzes(localQuizzes, groupCode);
@@ -121,7 +147,9 @@ export default function App() {
   const reloadQuizzes = async (groupCode: string) => {
     try {
       const remoteQuizzes = await fetchQuizzes(groupCode);
-      if (remoteQuizzes) setQuizzes(remoteQuizzes);
+      if (remoteQuizzes) {
+        setQuizzes((prev) => mergeQuizLists(remoteQuizzes, prev));
+      }
     } catch (error) {
       console.error('Failed to reload quizzes', error);
     }
