@@ -4,9 +4,9 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite --port=3000 --host=0.0.0.0",
-    "build": "vite build",
-    "preview": "vite preview",
+    "dev": "NODE_DISABLE_COMPILE_CACHE=1 vite --port=3000 --host=0.0.0.0",
+    "build": "NODE_DISABLE_COMPILE_CACHE=1 vite build",
+    "preview": "NODE_DISABLE_COMPILE_CACHE=1 vite preview",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit"
   },

@@ -4,7 +4,13 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { Quiz, Question, QuestionType } from '../types';
+import { Quiz, Question, QuestionSuggestion, QuestionType } from '../types';
+import {
+  fetchQuestionSuggestions,
+  submitQuestionSuggestion,
+  subscribeToQuestionSuggestions,
+  updateQuestionSuggestionStatus,
+} from '../lib/sharedData';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   ArrowLeft, 
@@ -13,19 +19,17 @@ import {
   Trash2, 
   Check, 
   Users, 
-  Clock, 
   MessageSquare, 
   CheckCircle2, 
-  HelpCircle, 
-  Edit3, 
-  AlertTriangle
+  AlertTriangle,
+  XCircle
 } from 'lucide-react';
 
 interface CollaborativeEditorProps {
   quiz: Quiz;
   username: string;
   groupCode: string;
-  onSaveQuiz: (updatedQuiz: Quiz) => void;
+  onSaveQuiz: (updatedQuiz: Quiz) => void | Promise<void>;
   onCancel: () => void;
 }
 
@@ -38,8 +42,11 @@ interface CollabEvent {
 }
 
 export default function CollaborativeEditor({ quiz, username, groupCode, onSaveQuiz, onCancel }: CollaborativeEditorProps) {
+  const isCreator = !quiz.createdBy || quiz.createdBy === username;
+
   // Current active questions list
   const [questions, setQuestions] = useState<Question[]>(() => quiz.questions || []);
+  const [pendingSuggestions, setPendingSuggestions] = useState<QuestionSuggestion[]>([]);
   
   // Quiz General Meta
   const [quizTitle, setQuizTitle] = useState(quiz.title);
@@ -83,6 +90,29 @@ export default function CollaborativeEditor({ quiz, username, groupCode, onSaveQ
     }
   ]);
 
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadSuggestions = async () => {
+      try {
+        const suggestions = await fetchQuestionSuggestions(groupCode, quiz.id);
+        if (isMounted && suggestions) {
+          setPendingSuggestions(suggestions);
+        }
+      } catch (error) {
+        console.error('Gagal memuat usulan soal:', error);
+      }
+    };
+
+    void loadSuggestions();
+    const unsubscribe = subscribeToQuestionSuggestions(groupCode, quiz.id, loadSuggestions);
+
+    return () => {
+      isMounted = false;
+      unsubscribe();
+    };
+  }, [groupCode, quiz.id]);
+
   // Load a question into form editor
   useEffect(() => {
     setErrorMsg('');
@@ -124,10 +154,15 @@ export default function CollaborativeEditor({ quiz, username, groupCode, onSaveQ
   }, [selectedQuestionIndex, questions]);
 
   // Save changes to current selected question (or create a new one)
-  const handleSaveQuestionForm = (e: React.FormEvent) => {
+  const handleSaveQuestionForm = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg('');
     setSuccessMsg('');
+
+    if (!isCreator && selectedQuestionIndex !== null) {
+      setErrorMsg('Hanya pembuat paket yang bisa mengubah soal aktif. Pilih "Beralih Buat Baru" untuk mengirim usulan soal.');
+      return;
+    }
 
     if (!qText.trim()) {
       setErrorMsg('Teks pertanyaan utama tidak boleh kosong.');
@@ -176,7 +211,10 @@ export default function CollaborativeEditor({ quiz, username, groupCode, onSaveQ
       options,
       correctAnswer: compiledCorrectAnswer,
       caseStudyText,
-      points: qType === QuestionType.ESSAY_CASE ? 50 : 20
+      points: qType === QuestionType.ESSAY_CASE ? 50 : 20,
+      createdBy: selectedQuestionIndex !== null && questions[selectedQuestionIndex]
+        ? questions[selectedQuestionIndex].createdBy || username
+        : username
     };
 
     if (selectedQuestionIndex !== null) {
@@ -187,6 +225,18 @@ export default function CollaborativeEditor({ quiz, username, groupCode, onSaveQ
       setSuccessMsg(`Berhasil memperbarui Soal Nomor ${selectedQuestionIndex + 1}!`);
     } else {
       // Adding Mode
+      if (!isCreator) {
+        try {
+          await submitQuestionSuggestion(groupCode, quiz.id, username, updatedQuestion);
+          setSuccessMsg('Usulan soal terkirim ke pembuat paket untuk ditinjau dan diimpor.');
+          setSelectedQuestionIndex(null);
+        } catch (error) {
+          console.error('Gagal mengirim usulan soal:', error);
+          setErrorMsg('Gagal mengirim usulan soal. Coba lagi beberapa saat.');
+        }
+        return;
+      }
+
       setQuestions((prev) => [...prev, updatedQuestion]);
       setSelectedQuestionIndex(questions.length); // auto-select the newly added question
       setSuccessMsg('Sukses menambahkan soal baru ke daftar kuis bersama!');
@@ -195,6 +245,11 @@ export default function CollaborativeEditor({ quiz, username, groupCode, onSaveQ
 
   // Remove a question
   const handleDeleteQuestion = (idx: number) => {
+    if (!isCreator) {
+      setErrorMsg('Hanya pembuat paket yang bisa menghapus soal aktif.');
+      return;
+    }
+
     if (questions.length <= 1) {
       alert('Kuis harus memiliki minimal 1 soal. Anda tidak bisa menghapus seluruh soal.');
       return;
@@ -216,8 +271,59 @@ export default function CollaborativeEditor({ quiz, username, groupCode, onSaveQ
     }
   };
 
+  const buildFinalizedQuiz = (nextQuestions: Question[]): Quiz => ({
+    ...quiz,
+    title: quizTitle.trim(),
+    description: quizDesc.trim() || 'Hasil suntingan kolaboratif kelompok.',
+    durationMinutes: parseInt(quizDuration) || quiz.durationMinutes,
+    questions: nextQuestions,
+    createdAt: new Date().toISOString()
+  });
+
+  const handleImportSuggestion = async (suggestion: QuestionSuggestion) => {
+    if (!isCreator) return;
+
+    const importedQuestion: Question = {
+      ...suggestion.question,
+      id: `suggested_q_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      createdBy: suggestion.suggestedBy
+    };
+    const nextQuestions = [...questions, importedQuestion];
+
+    try {
+      setQuestions(nextQuestions);
+      await onSaveQuiz(buildFinalizedQuiz(nextQuestions));
+      await updateQuestionSuggestionStatus(groupCode, suggestion.id, 'imported', username);
+      setPendingSuggestions((prev) => prev.filter((item) => item.id !== suggestion.id));
+      setSelectedQuestionIndex(nextQuestions.length - 1);
+      setSuccessMsg(`Usulan dari ${suggestion.suggestedBy} berhasil diimpor ke paket.`);
+    } catch (error) {
+      console.error('Gagal mengimpor usulan soal:', error);
+      setQuestions(questions);
+      setErrorMsg('Gagal mengimpor usulan soal. Coba lagi beberapa saat.');
+    }
+  };
+
+  const handleRejectSuggestion = async (suggestion: QuestionSuggestion) => {
+    if (!isCreator) return;
+
+    try {
+      await updateQuestionSuggestionStatus(groupCode, suggestion.id, 'rejected', username);
+      setPendingSuggestions((prev) => prev.filter((item) => item.id !== suggestion.id));
+      setSuccessMsg(`Usulan dari ${suggestion.suggestedBy} ditolak.`);
+    } catch (error) {
+      console.error('Gagal menolak usulan soal:', error);
+      setErrorMsg('Gagal menolak usulan soal. Coba lagi beberapa saat.');
+    }
+  };
+
   // Save the entire quiz package modifications
   const handleFinalPublish = () => {
+    if (!isCreator) {
+      alert('Hanya pembuat paket yang bisa menerapkan perubahan final.');
+      return;
+    }
+
     if (!quizTitle.trim()) {
       alert('Judul kuis tidak boleh kosong.');
       return;
@@ -234,14 +340,7 @@ export default function CollaborativeEditor({ quiz, username, groupCode, onSaveQ
       return;
     }
 
-    const finalizedQuiz: Quiz = {
-      ...quiz,
-      title: quizTitle.trim(),
-      description: quizDesc.trim() || 'Hasil suntingan kolaboratif kelompok.',
-      durationMinutes: duration,
-      questions: questions,
-      createdAt: new Date().toISOString() // refresh timestamp
-    };
+    const finalizedQuiz = buildFinalizedQuiz(questions);
 
     onSaveQuiz(finalizedQuiz);
     alert(`Sukses memperbarui "${finalizedQuiz.title}" secara sinkron bagi seluruh anggota grup!`);
@@ -269,6 +368,11 @@ export default function CollaborativeEditor({ quiz, username, groupCode, onSaveQ
               <div className="flex items-center gap-1.5">
                 <span className="inline-flex items-center gap-1 text-[9px] font-mono font-black uppercase bg-natural-primary text-white px-2 py-0.5 rounded">
                   RUANG EDIT BERSAMA ({groupCode})
+                </span>
+                <span className={`inline-flex items-center gap-1 text-[9px] font-mono font-black uppercase px-2 py-0.5 rounded ${
+                  isCreator ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
+                }`}>
+                  {isCreator ? 'Pembuat Paket' : 'Kontributor'}
                 </span>
               </div>
               <h2 className="text-sm sm:text-base font-extrabold text-natural-text-dark line-clamp-1 mt-0.5">
@@ -300,7 +404,12 @@ export default function CollaborativeEditor({ quiz, username, groupCode, onSaveQ
             {/* Final Save Button */}
             <button
               onClick={handleFinalPublish}
-              className="px-4 py-2 bg-natural-primary hover:bg-natural-primary-hover text-white text-xs font-extrabold rounded-xl shadow-xs transition-all cursor-pointer flex items-center gap-1.5"
+              disabled={!isCreator}
+              className={`px-4 py-2 text-white text-xs font-extrabold rounded-xl shadow-xs transition-all flex items-center gap-1.5 ${
+                isCreator
+                  ? 'bg-natural-primary hover:bg-natural-primary-hover cursor-pointer'
+                  : 'bg-natural-border-dark cursor-not-allowed'
+              }`}
               id="publish_collaborative_quiz_btn"
             >
               <Save className="w-4 h-4" />
@@ -367,26 +476,33 @@ export default function CollaborativeEditor({ quiz, username, groupCode, onSaveQ
                         <p className="text-xs text-natural-text-dark font-medium truncate">
                           {q.questionText}
                         </p>
+                        <span className="text-[9px] text-natural-text-muted font-medium truncate block mt-0.5">
+                          Dibuat oleh: {q.createdBy || quiz.createdBy || 'Pembuat awal'}
+                        </span>
                       </div>
                     </div>
 
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleDeleteQuestion(idx);
-                      }}
-                      className="text-natural-text-muted hover:text-natural-accent p-1 rounded-md hover:bg-natural-surface transition-colors cursor-pointer"
-                      title="Hapus Soal"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
+                    {isCreator && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeleteQuestion(idx);
+                        }}
+                        className="text-natural-text-muted hover:text-natural-accent p-1 rounded-md hover:bg-natural-surface transition-colors cursor-pointer"
+                        title="Hapus Soal"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
                   </div>
                 );
               })}
             </div>
 
             <div className="mt-4 pt-3 border-t border-natural-surface text-[10px] text-natural-text-muted leading-relaxed">
-              💡 Klik soal di atas untuk mengedit teks pertanyaan, opsi jawaban, jenis soal, atau kunci jawaban secara terperinci.
+              {isCreator
+                ? '💡 Klik soal di atas untuk mengedit. Usulan dari teman bisa diimpor lewat panel kanan.'
+                : '💡 Kamu bisa melihat soal aktif, tetapi penambahan soal baru akan masuk ke antrean tinjauan pembuat paket.'}
             </div>
           </div>
 
@@ -443,7 +559,11 @@ export default function CollaborativeEditor({ quiz, username, groupCode, onSaveQ
                   {selectedQuestionIndex !== null ? 'SUNTING SOAL AKTIF' : 'TAMBAHKAN SOAL BARU'}
                 </span>
                 <h3 className="text-sm font-extrabold text-[#5A5A40]">
-                  {selectedQuestionIndex !== null ? `Mendetailkan Soal #${selectedQuestionIndex + 1}` : 'Mengonstruksi Lembar Soal Draf Baru'}
+                  {selectedQuestionIndex !== null
+                    ? `Mendetailkan Soal #${selectedQuestionIndex + 1}`
+                    : isCreator
+                      ? 'Mengonstruksi Lembar Soal Draf Baru'
+                      : 'Mengirim Usulan Soal untuk Ditinjau'}
                 </h3>
               </div>
 
@@ -673,7 +793,9 @@ export default function CollaborativeEditor({ quiz, username, groupCode, onSaveQ
               {/* Form Action Controls */}
               <div className="pt-4 border-t border-natural-surface flex items-center justify-between gap-3">
                 <p className="text-[10px] text-natural-text-muted leading-relaxed max-w-[50%]">
-                  Setelah klik "Simpan Soal", daftar di kolom sebelah kiri akan terupdate otomatis.
+                  {isCreator
+                    ? 'Setelah klik "Simpan Soal", daftar di kolom sebelah kiri akan terupdate otomatis.'
+                    : 'Usulan soal tidak langsung masuk paket. Pembuat paket harus meninjau dan mengimpor dulu.'}
                 </p>
                 <div className="flex gap-2.5">
                   <button
@@ -681,7 +803,7 @@ export default function CollaborativeEditor({ quiz, username, groupCode, onSaveQ
                     className="px-4 py-2 bg-natural-primary hover:bg-natural-primary-hover text-white rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 shadow-sm active:scale-98"
                   >
                     <Check className="w-3.5 h-3.5" />
-                    Simpan Soal
+                    {isCreator || selectedQuestionIndex !== null ? 'Simpan Soal' : 'Kirim Usulan'}
                   </button>
                 </div>
               </div>
@@ -692,6 +814,64 @@ export default function CollaborativeEditor({ quiz, username, groupCode, onSaveQ
 
         {/* COLUMN 3: RIGHT PANEL - ACTIVITY FEED (Span 4) */}
         <div className="lg:col-span-4 flex flex-col gap-6">
+          <div className="bg-white rounded-2xl border border-natural-border p-4 shadow-xs">
+            <h4 className="text-xs font-mono font-bold text-natural-text-dark uppercase tracking-wider border-b border-natural-surface pb-3 mb-3 flex items-center justify-between">
+              <span>Usulan Soal dari Teman</span>
+              <MessageSquare className="w-3.5 h-3.5 text-natural-accent" />
+            </h4>
+
+            {!isCreator && (
+              <div className="mb-3 p-3 bg-amber-50 border border-amber-100 rounded-xl text-[10px] text-amber-900 leading-relaxed">
+                Buat soal baru di form tengah, lalu klik <strong>Kirim Usulan</strong>. Usulanmu akan menunggu tinjauan pembuat paket.
+              </div>
+            )}
+
+            {pendingSuggestions.length === 0 ? (
+              <div className="text-center py-6 text-[11px] text-natural-text-muted bg-natural-surface/30 rounded-xl border border-natural-border">
+                Belum ada usulan soal yang menunggu tinjauan.
+              </div>
+            ) : (
+              <div className="space-y-3 max-h-[320px] overflow-y-auto custom-scrollbar pr-1">
+                {pendingSuggestions.map((suggestion) => (
+                  <div key={suggestion.id} className="p-3 rounded-xl border border-natural-border bg-natural-surface/20">
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <span className="text-[9px] font-mono font-black uppercase text-natural-accent">
+                          {suggestion.question.type}
+                        </span>
+                        <p className="text-xs font-bold text-natural-text-dark leading-snug mt-0.5">
+                          {suggestion.question.questionText}
+                        </p>
+                        <p className="text-[10px] text-natural-text-muted mt-1">
+                          Diusulkan oleh: <strong>{suggestion.suggestedBy}</strong>
+                        </p>
+                      </div>
+                    </div>
+
+                    {isCreator && (
+                      <div className="flex gap-2 mt-3">
+                        <button
+                          onClick={() => void handleImportSuggestion(suggestion)}
+                          className="flex-1 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[10px] font-bold cursor-pointer transition-all flex items-center justify-center gap-1"
+                        >
+                          <CheckCircle2 className="w-3.5 h-3.5" />
+                          Impor
+                        </button>
+                        <button
+                          onClick={() => void handleRejectSuggestion(suggestion)}
+                          className="flex-1 px-3 py-1.5 bg-white hover:bg-[#FFF5ED] text-natural-accent border border-natural-border-dark rounded-lg text-[10px] font-bold cursor-pointer transition-all flex items-center justify-center gap-1"
+                        >
+                          <XCircle className="w-3.5 h-3.5" />
+                          Tolak
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
           <div className="bg-white rounded-2xl border border-natural-border p-4 shadow-xs flex-1 flex flex-col">
             <h4 className="text-xs font-mono font-bold text-natural-text-dark uppercase tracking-wider border-b border-natural-surface pb-3 mb-3 flex items-center justify-between">
               <span>Log Aktivitas Editor</span>

@@ -18,6 +18,7 @@ export interface Question {
   correctAnswer: string; // Correct choice letter (A/B/C/D), 'TRUE'/'FALSE', or exact text
   caseStudyText?: string; // Text for split-screen case reference (mostly for Essay, but can genericise)
   points?: number;
+  createdBy?: string;
 }
 
 export interface Quiz {
@@ -48,4 +49,13 @@ export interface GroupSession {
   username: string;
   groupCode: string;
   loginTime: string;
+}
+
+export interface QuestionSuggestion {
+  id: string;
+  quizId: string;
+  suggestedBy: string;
+  question: Question;
+  status: 'pending' | 'imported' | 'rejected';
+  createdAt: string;
 }

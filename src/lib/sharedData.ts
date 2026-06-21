@@ -1,4 +1,4 @@
-import { Attempt, Quiz } from '../types';
+import { Attempt, Question, QuestionSuggestion, Quiz } from '../types';
 import { supabase } from './supabase';
 
 type QuizRow = {
@@ -25,6 +25,16 @@ type AttemptRow = {
   completed_at: string;
   answers: Record<string, string>;
   flags: Record<string, boolean>;
+};
+
+type QuestionSuggestionRow = {
+  id: string;
+  group_code: string;
+  quiz_id: string;
+  suggested_by: string;
+  question: Question;
+  status: QuestionSuggestion['status'];
+  created_at: string;
 };
 
 const toQuiz = (row: QuizRow): Quiz => ({
@@ -64,6 +74,15 @@ const toAttemptRow = (attempt: Attempt, groupCode: string): AttemptRow => ({
   completed_at: attempt.completedAt,
   answers: attempt.answers,
   flags: attempt.flags,
+});
+
+const toQuestionSuggestion = (row: QuestionSuggestionRow): QuestionSuggestion => ({
+  id: row.id,
+  quizId: row.quiz_id,
+  suggestedBy: row.suggested_by,
+  question: row.question,
+  status: row.status,
+  createdAt: row.created_at,
 });
 
 export async function fetchQuizzes(groupCode: string) {
@@ -127,6 +146,63 @@ export async function deleteQuiz(quizId: string, groupCode: string, username: st
   if (error) throw error;
 }
 
+export async function fetchQuestionSuggestions(groupCode: string, quizId: string) {
+  if (!supabase) return null;
+
+  const { data, error } = await supabase
+    .from('question_suggestions')
+    .select('*')
+    .eq('group_code', groupCode)
+    .eq('quiz_id', quizId)
+    .eq('status', 'pending')
+    .order('created_at', { ascending: false });
+
+  if (error) throw error;
+  return (data as QuestionSuggestionRow[]).map(toQuestionSuggestion);
+}
+
+export async function submitQuestionSuggestion(
+  groupCode: string,
+  quizId: string,
+  suggestedBy: string,
+  question: Question
+) {
+  if (!supabase) return;
+
+  const { error } = await supabase.from('question_suggestions').insert({
+    id: `suggestion_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    group_code: groupCode,
+    quiz_id: quizId,
+    suggested_by: suggestedBy,
+    question,
+    status: 'pending',
+    created_at: new Date().toISOString(),
+  });
+
+  if (error) throw error;
+}
+
+export async function updateQuestionSuggestionStatus(
+  groupCode: string,
+  suggestionId: string,
+  status: QuestionSuggestion['status'],
+  reviewedBy: string
+) {
+  if (!supabase) return;
+
+  const { error } = await supabase
+    .from('question_suggestions')
+    .update({
+      status,
+      reviewed_by: reviewedBy,
+      reviewed_at: new Date().toISOString(),
+    })
+    .eq('group_code', groupCode)
+    .eq('id', suggestionId);
+
+  if (error) throw error;
+}
+
 export async function insertAttempt(attempt: Attempt, groupCode: string) {
   if (!supabase) return;
 
@@ -169,6 +245,32 @@ export function subscribeToGroupData(
       'postgres_changes',
       { event: '*', schema: 'public', table: 'attempts', filter: `group_code=eq.${groupCode}` },
       onAttemptsChanged
+    )
+    .subscribe();
+
+  return () => {
+    void supabase.removeChannel(channel);
+  };
+}
+
+export function subscribeToQuestionSuggestions(
+  groupCode: string,
+  quizId: string,
+  onSuggestionsChanged: () => void
+) {
+  if (!supabase) return () => {};
+
+  const channel = supabase
+    .channel(`latihsoal:suggestions:${groupCode}:${quizId}`)
+    .on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'question_suggestions',
+        filter: `group_code=eq.${groupCode}`,
+      },
+      onSuggestionsChanged
     )
     .subscribe();
 

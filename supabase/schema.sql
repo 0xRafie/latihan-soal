@@ -142,8 +142,25 @@ create table if not exists public.attempts (
 create index if not exists attempts_group_code_completed_at_idx
   on public.attempts (group_code, completed_at desc);
 
+create table if not exists public.question_suggestions (
+  id text not null,
+  group_code text not null,
+  quiz_id text not null,
+  suggested_by text not null,
+  question jsonb not null,
+  status text not null default 'pending' check (status in ('pending', 'imported', 'rejected')),
+  created_at timestamptz not null default now(),
+  reviewed_by text,
+  reviewed_at timestamptz,
+  primary key (group_code, id)
+);
+
+create index if not exists question_suggestions_group_quiz_status_idx
+  on public.question_suggestions (group_code, quiz_id, status, created_at desc);
+
 alter table public.quizzes enable row level security;
 alter table public.attempts enable row level security;
+alter table public.question_suggestions enable row level security;
 
 drop policy if exists "Allow public quiz reads" on public.quizzes;
 drop policy if exists "Allow public quiz writes" on public.quizzes;
@@ -152,6 +169,9 @@ drop policy if exists "Allow public attempt reads" on public.attempts;
 drop policy if exists "Allow public attempt writes" on public.attempts;
 drop policy if exists "Allow public attempt updates" on public.attempts;
 drop policy if exists "Allow public attempt deletes" on public.attempts;
+drop policy if exists "Allow public suggestion reads" on public.question_suggestions;
+drop policy if exists "Allow public suggestion writes" on public.question_suggestions;
+drop policy if exists "Allow public suggestion updates" on public.question_suggestions;
 
 create policy "Allow public quiz reads"
   on public.quizzes for select
@@ -183,6 +203,19 @@ create policy "Allow public attempt deletes"
   on public.attempts for delete
   using (true);
 
+create policy "Allow public suggestion reads"
+  on public.question_suggestions for select
+  using (true);
+
+create policy "Allow public suggestion writes"
+  on public.question_suggestions for insert
+  with check (true);
+
+create policy "Allow public suggestion updates"
+  on public.question_suggestions for update
+  using (true)
+  with check (true);
+
 do $$
 begin
   alter publication supabase_realtime add table public.quizzes;
@@ -193,6 +226,13 @@ end $$;
 do $$
 begin
   alter publication supabase_realtime add table public.attempts;
+exception
+  when duplicate_object then null;
+end $$;
+
+do $$
+begin
+  alter publication supabase_realtime add table public.question_suggestions;
 exception
   when duplicate_object then null;
 end $$;
