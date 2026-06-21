@@ -1,12 +1,13 @@
 create table if not exists public.quizzes (
-  id text primary key,
+  id text not null,
   group_code text not null,
   title text not null,
   description text not null,
   duration_minutes integer not null check (duration_minutes > 0),
   created_by text not null,
   created_at timestamptz not null,
-  questions jsonb not null default '[]'::jsonb
+  questions jsonb not null default '[]'::jsonb,
+  primary key (group_code, id)
 );
 
 create index if not exists quizzes_group_code_created_at_idx
@@ -89,8 +90,7 @@ begin
     p_created_at,
     coalesce(p_questions, '[]'::jsonb)
   )
-  on conflict (id) do update set
-    group_code = excluded.group_code,
+  on conflict (group_code, id) do update set
     title = excluded.title,
     description = excluded.description,
     duration_minutes = excluded.duration_minutes,
@@ -124,7 +124,7 @@ $$;
 grant execute on function public.delete_quiz_if_creator(text, text, text) to anon, authenticated;
 
 create table if not exists public.attempts (
-  id text primary key,
+  id text not null,
   group_code text not null,
   quiz_id text not null,
   quiz_title text not null,
@@ -135,7 +135,8 @@ create table if not exists public.attempts (
   duration_spent_seconds integer not null,
   completed_at timestamptz not null,
   answers jsonb not null default '{}'::jsonb,
-  flags jsonb not null default '{}'::jsonb
+  flags jsonb not null default '{}'::jsonb,
+  primary key (group_code, id)
 );
 
 create index if not exists attempts_group_code_completed_at_idx

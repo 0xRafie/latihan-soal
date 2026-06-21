@@ -5,7 +5,7 @@
 
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { DEFAULT_QUIZZES, MOCK_ACTIVITIES } from './data/defaultQuizzes';
+import { DEFAULT_QUIZZES } from './data/defaultQuizzes';
 import { Quiz, Attempt, QuestionType } from './types';
 import { isSupabaseConfigured } from './lib/supabase';
 import {
@@ -28,51 +28,58 @@ import QuizRunner from './components/QuizRunner';
 import QuizResults from './components/QuizResults';
 import CollaborativeEditor from './components/CollaborativeEditor';
 
+type Session = { username: string; groupCode: string };
+
+const getQuizCacheKey = (groupCode: string) => `latih_soal_quizzes_${groupCode}`;
+const getAttemptCacheKey = (groupCode: string) => `latih_soal_attempts_${groupCode}`;
+
+const readSession = (): Session | null => {
+  try {
+    const persisted = localStorage.getItem('latih_soal_session');
+    return persisted ? JSON.parse(persisted) : null;
+  } catch {
+    return null;
+  }
+};
+
+const readCachedQuizzes = (groupCode: string): Quiz[] | null => {
+  try {
+    const persisted = localStorage.getItem(getQuizCacheKey(groupCode));
+    return persisted ? JSON.parse(persisted) : null;
+  } catch {
+    return null;
+  }
+};
+
+const readCachedAttempts = (groupCode: string): Attempt[] | null => {
+  try {
+    const persisted = localStorage.getItem(getAttemptCacheKey(groupCode));
+    return persisted ? JSON.parse(persisted) : null;
+  } catch {
+    return null;
+  }
+};
+
 export default function App() {
   // 1. Session state persistence
-  const [session, setSession] = useState<{ username: string; groupCode: string } | null>(() => {
-    try {
-      const persisted = localStorage.getItem('latih_soal_session');
-      return persisted ? JSON.parse(persisted) : null;
-    } catch {
-      return null;
-    }
-  });
+  const [session, setSession] = useState<Session | null>(() => readSession());
 
   // 2. Quiz packages storage with defaults
   const [quizzes, setQuizzes] = useState<Quiz[]>(() => {
-    try {
-      const persisted = localStorage.getItem('latih_soal_quizzes');
-      if (persisted) {
-        return JSON.parse(persisted);
-      }
-    } catch {}
+    const persistedSession = readSession();
+    if (persistedSession) {
+      return readCachedQuizzes(persistedSession.groupCode) ?? DEFAULT_QUIZZES;
+    }
     return DEFAULT_QUIZZES;
   });
 
   // 3. User attempts history ledger
   const [attempts, setAttempts] = useState<Attempt[]>(() => {
-    try {
-      const persisted = localStorage.getItem('latih_soal_attempts');
-      if (persisted) {
-        return JSON.parse(persisted);
-      }
-    } catch {}
-    
-    // Map default pre-loaded mock activities
-    return MOCK_ACTIVITIES.map((act) => ({
-      id: act.id,
-      quizId: act.quizTitle.includes('Kopi') ? '2' : '1',
-      quizTitle: act.quizTitle,
-      username: act.username,
-      score: act.score,
-      correctCount: Math.round((act.score / 100) * 5),
-      totalQuestions: 5,
-      durationSpentSeconds: 245,
-      completedAt: act.completedAt,
-      answers: {},
-      flags: {}
-    }));
+    const persistedSession = readSession();
+    if (persistedSession) {
+      return readCachedAttempts(persistedSession.groupCode) ?? [];
+    }
+    return [];
   });
 
   // Navigation route controls
@@ -122,20 +129,26 @@ export default function App() {
         fetchAttempts(groupCode),
       ]);
 
+      const cachedQuizzes = readCachedQuizzes(groupCode);
+      const localQuizzes = cachedQuizzes ?? DEFAULT_QUIZZES;
+
       if (remoteQuizzes && remoteQuizzes.length > 0) {
-        const mergedQuizzes = mergeQuizLists(remoteQuizzes, quizzes);
+        const mergedQuizzes = mergeQuizLists(remoteQuizzes, localQuizzes);
         setQuizzes(mergedQuizzes);
         await Promise.all(mergedQuizzes.map((quiz) => upsertQuiz(quiz, groupCode)));
       } else {
-        const localQuizzes = quizzes.length > 0 ? quizzes : DEFAULT_QUIZZES;
         await upsertQuizzes(localQuizzes, groupCode);
         setQuizzes(localQuizzes);
       }
 
+      const cachedAttempts = readCachedAttempts(groupCode) ?? [];
       if (remoteAttempts && remoteAttempts.length > 0) {
         setAttempts(remoteAttempts);
-      } else if (attempts.length > 0) {
-        await upsertAttempts(attempts, groupCode);
+      } else if (cachedAttempts.length > 0) {
+        await upsertAttempts(cachedAttempts, groupCode);
+        setAttempts(cachedAttempts);
+      } else {
+        setAttempts([]);
       }
     } catch (error) {
       console.error('Failed to sync Supabase data', error);
@@ -167,20 +180,24 @@ export default function App() {
 
   // Sync state modifications with LocalStorage as offline fallback
   useEffect(() => {
+    if (!session) return;
+
     try {
-      localStorage.setItem('latih_soal_quizzes', JSON.stringify(quizzes));
+      localStorage.setItem(getQuizCacheKey(session.groupCode), JSON.stringify(quizzes));
     } catch (e) {
       console.error('Failed to write quizzes to cache', e);
     }
-  }, [quizzes]);
+  }, [quizzes, session?.groupCode]);
 
   useEffect(() => {
+    if (!session) return;
+
     try {
-      localStorage.setItem('latih_soal_attempts', JSON.stringify(attempts));
+      localStorage.setItem(getAttemptCacheKey(session.groupCode), JSON.stringify(attempts));
     } catch (e) {
       console.error('Failed to write attempts to cache', e);
     }
-  }, [attempts]);
+  }, [attempts, session?.groupCode]);
 
   useEffect(() => {
     if (!session || !isSupabaseConfigured) return;
@@ -197,6 +214,8 @@ export default function App() {
   // Auth triggers
   const handleLogin = (username: string, groupCode: string) => {
     const userSession = { username: username.trim(), groupCode: groupCode.toUpperCase() };
+    setQuizzes(readCachedQuizzes(userSession.groupCode) ?? DEFAULT_QUIZZES);
+    setAttempts(readCachedAttempts(userSession.groupCode) ?? []);
     setSession(userSession);
     localStorage.setItem('latih_soal_session', JSON.stringify(userSession));
     setActiveView('dashboard');

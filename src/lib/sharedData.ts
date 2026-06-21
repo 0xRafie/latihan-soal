@@ -139,7 +139,7 @@ export async function upsertAttempts(attempts: Attempt[], groupCode: string) {
 
   const { error } = await supabase
     .from('attempts')
-    .upsert(attempts.map((attempt) => toAttemptRow(attempt, groupCode)), { onConflict: 'id' });
+    .upsert(attempts.map((attempt) => toAttemptRow(attempt, groupCode)), { onConflict: 'group_code,id' });
 
   if (error) throw error;
 }
