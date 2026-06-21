@@ -11,6 +11,7 @@ import {
   subscribeToQuestionSuggestions,
   updateQuestionSuggestionStatus,
 } from '../lib/sharedData';
+import { supabase } from '../lib/supabase';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   ArrowLeft, 
@@ -40,6 +41,25 @@ interface CollabEvent {
   user: string;
   avatarColor: string;
 }
+
+interface Peer {
+  name: string;
+  status: string;
+  color: string;
+}
+
+type PresenceMeta = {
+  username?: string;
+  status?: string;
+  onlineAt?: string;
+};
+
+const peerColors = ['bg-emerald-600', 'bg-amber-600', 'bg-sky-600', 'bg-violet-600', 'bg-rose-600'];
+
+const getPeerColor = (name: string) => {
+  const total = name.split('').reduce((sum, char) => sum + char.charCodeAt(0), 0);
+  return peerColors[total % peerColors.length];
+};
 
 export default function CollaborativeEditor({ quiz, username, groupCode, onSaveQuiz, onCancel }: CollaborativeEditorProps) {
   const isCreator = !quiz.createdBy || quiz.createdBy === username;
@@ -74,10 +94,9 @@ export default function CollaborativeEditor({ quiz, username, groupCode, onSaveQ
   // Notifications and messages
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
-
-  const peers = [
-    { name: username, status: 'Sedang mengedit', color: 'bg-emerald-500' }
-  ];
+  const [peers, setPeers] = useState<Peer[]>([
+    { name: username, status: 'Sedang mengedit', color: getPeerColor(username) }
+  ]);
 
   // Live Activity feed states
   const [events] = useState<CollabEvent[]>([
@@ -112,6 +131,54 @@ export default function CollaborativeEditor({ quiz, username, groupCode, onSaveQ
       unsubscribe();
     };
   }, [groupCode, quiz.id]);
+
+  useEffect(() => {
+    if (!supabase) {
+      setPeers([{ name: username, status: 'Sedang mengedit', color: getPeerColor(username) }]);
+      return;
+    }
+
+    const channel = supabase.channel(`latihsoal:presence:${groupCode}:${quiz.id}`, {
+      config: {
+        presence: {
+          key: username,
+        },
+      },
+    });
+
+    channel
+      .on('presence', { event: 'sync' }, () => {
+        const presenceState = channel.presenceState() as Record<string, PresenceMeta[]>;
+        const activePeers = Object.values(presenceState)
+          .flat()
+          .reduce<Peer[]>((list, meta) => {
+            const name = meta.username || username;
+            if (!list.some((peer) => peer.name === name)) {
+              list.push({
+                name,
+                status: meta.status || 'Sedang mengedit',
+                color: getPeerColor(name),
+              });
+            }
+            return list;
+          }, []);
+
+        setPeers(activePeers.length > 0 ? activePeers : [{ name: username, status: 'Sedang mengedit', color: getPeerColor(username) }]);
+      })
+      .subscribe(async (status: string) => {
+        if (status === 'SUBSCRIBED') {
+          await channel.track({
+            username,
+            status: 'Sedang mengedit',
+            onlineAt: new Date().toISOString(),
+          });
+        }
+      });
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [groupCode, quiz.id, username]);
 
   // Load a question into form editor
   useEffect(() => {
@@ -385,12 +452,10 @@ export default function CollaborativeEditor({ quiz, username, groupCode, onSaveQ
             {/* Live Peer Overviews */}
             <div className="flex items-center -space-x-1.5 bg-natural-surface border border-natural-border-dark rounded-lg p-1 px-2">
               <Users className="w-3.5 h-3.5 text-natural-primary mr-1 bg-white p-0.5 rounded" />
-              {peers.map((peer, pIdx) => (
+              {peers.map((peer) => (
                 <div 
                   key={peer.name} 
-                  className={`w-5 h-5 rounded-full text-[9px] font-mono font-black text-white flex items-center justify-center cursor-help shadow-xs ${
-                    pIdx === 0 ? 'bg-emerald-600' : pIdx === 1 ? 'bg-amber-600' : 'bg-sky-600'
-                  }`}
+                  className={`w-5 h-5 rounded-full text-[9px] font-mono font-black text-white flex items-center justify-center cursor-help shadow-xs ${peer.color}`}
                   title={`${peer.name} - ${peer.status}`}
                 >
                   {peer.name[0]}

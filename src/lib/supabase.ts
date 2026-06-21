@@ -8,7 +8,7 @@ export const isSupabaseConfigured = Boolean(supabaseUrl && supabaseAnonKey);
 type SupabaseClientLike = {
   from: (table: string) => any;
   rpc: (fn: string, args?: Record<string, unknown>) => any;
-  channel: (topic: string) => any;
+  channel: (topic: string, opts?: Record<string, unknown>) => any;
   removeChannel: (channel: any) => Promise<unknown>;
 };
 
