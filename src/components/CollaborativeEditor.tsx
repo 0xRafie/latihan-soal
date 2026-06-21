@@ -15,13 +15,10 @@ import {
   Users, 
   Clock, 
   MessageSquare, 
-  Sparkles, 
   CheckCircle2, 
   HelpCircle, 
   Edit3, 
-  RefreshCw,
-  AlertTriangle,
-  UserCheck
+  AlertTriangle
 } from 'lucide-react';
 
 interface CollaborativeEditorProps {
@@ -38,12 +35,6 @@ interface CollabEvent {
   text: string;
   user: string;
   avatarColor: string;
-}
-
-interface SuggestedQuestion {
-  id: string;
-  user: string;
-  question: Question;
 }
 
 export default function CollaborativeEditor({ quiz, username, groupCode, onSaveQuiz, onCancel }: CollaborativeEditorProps) {
@@ -77,60 +68,18 @@ export default function CollaborativeEditor({ quiz, username, groupCode, onSaveQ
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
 
-  // Live Simulated Collaborative Peers State
-  const [peers, setPeers] = useState([
-    { name: 'Siti Rahma', status: 'Mengetik kuis...', color: 'bg-emerald-500' },
-    { name: 'Budi Santoso', status: 'Membaca Soal #2', color: 'bg-amber-500' },
-    { name: 'Andi Wijaya', status: 'Aktif', color: 'bg-sky-500' }
-  ]);
+  const peers = [
+    { name: username, status: 'Sedang mengedit', color: 'bg-emerald-500' }
+  ];
 
   // Live Activity feed states
-  const [events, setEvents] = useState<CollabEvent[]>([
+  const [events] = useState<CollabEvent[]>([
     {
       id: 'e1',
       time: 'Baru saja',
-      text: 'bergabung ke ruang sunting kuis.',
-      user: 'Siti Rahma',
+      text: 'membuka ruang sunting kuis.',
+      user: username,
       avatarColor: 'bg-emerald-600'
-    },
-    {
-      id: 'e2',
-      time: '1 menit lalu',
-      text: 'melihat pratinjau lembar studi kasus.',
-      user: 'Budi Santoso',
-      avatarColor: 'bg-amber-600'
-    }
-  ]);
-
-  // Peer question suggestions pipeline
-  const [suggestions, setSuggestions] = useState<SuggestedQuestion[]>([
-    {
-      id: 'sug1',
-      user: 'Andi Wijaya',
-      question: {
-        id: `sug_q_${Date.now()}_1`,
-        type: QuestionType.MULTIPLE_CHOICE,
-        questionText: 'Manakah perintah SQL untuk mengambil kolom unik / menghilangkan duplikasi baris?',
-        options: [
-          'A. SELECT UNIQUE',
-          'B. SELECT DISTINCT',
-          'C. SELECT EXCLUDE',
-          'D. SELECT GROUP'
-        ],
-        correctAnswer: 'B',
-        points: 20
-      }
-    },
-    {
-      id: 'sug2',
-      user: 'Siti Rahma',
-      question: {
-        id: `sug_q_${Date.now()}_2`,
-        type: QuestionType.TRUE_FALSE,
-        questionText: 'Di dalam CSS Flexbox, properti `justify-content` bertugas mengatur perataan item sepanjang "cross axis" (sumbu silang).',
-        correctAnswer: 'FALSE',
-        points: 20
-      }
     }
   ]);
 
@@ -173,85 +122,6 @@ export default function CollaborativeEditor({ quiz, username, groupCode, onSaveQ
       setEssayCorrect('');
     }
   }, [selectedQuestionIndex, questions]);
-
-  // Simulated peer collaborative activity stream generator
-  useEffect(() => {
-    const peerActions = [
-      () => {
-        const timestamp = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
-        const names = ['Siti Rahma', 'Budi Santoso', 'Andi Wijaya'];
-        const randomName = names[Math.floor(Math.random() * names.length)];
-        const comments = [
-          'mengubah draf judul soal ujian...',
-          'menilai opsi ganda pada lembar editor.',
-          'mengoptimalkan ejaan kunci jawaban.',
-          'mereview format kuis isian tingkat lanjut.',
-          'menyimpan revisi draf pertanyaan.'
-        ];
-        const randomComment = comments[Math.floor(Math.random() * comments.length)];
-        
-        setEvents(prev => [
-          {
-            id: `event_${Date.now()}`,
-            time: timestamp,
-            text: randomComment,
-            user: randomName,
-            avatarColor: randomName === 'Siti Rahma' ? 'bg-emerald-600' : randomName === 'Budi Santoso' ? 'bg-amber-600' : 'bg-sky-600'
-          },
-          ...prev.slice(0, 5) // Keep last 6 events
-        ]);
-        
-        // Update peer status label
-        setPeers(prev => prev.map(p => 
-          p.name === randomName 
-            ? { ...p, status: randomComment.substring(0, 20) + (randomComment.length > 20 ? '...' : '') }
-            : p
-        ));
-      },
-      () => {
-        // Occasionally propose a bot suggestion question based on popular subjects
-        const generatorOptions = [
-          {
-            user: 'Budi Santoso',
-            question: {
-              id: `sug_q_${Date.now()}_3`,
-              type: QuestionType.SHORT_ANSWER,
-              questionText: 'Apakah nama protokol transfer data yang terenkripsi dan aman di web browser?',
-              correctAnswer: 'https',
-              points: 20
-            }
-          },
-          {
-            user: 'Siti Rahma',
-            question: {
-              id: `sug_q_${Date.now()}_4`,
-              type: QuestionType.ESSAY_CASE,
-              caseStudyText: '## ANALISIS SISTEM INFORMASI\nSebuah start-up e-commerce sering mengalami "crash" sistem data pada momentum kampanye tanggal kembar (seperti 12.12). Server database MySQL mereka kehabisan memori buffer.',
-              questionText: 'Berikan solusi infrastruktur yang ringkas untuk mengatasi lonjakan trafik tersebut tanpa mengandalkan server terpusat!',
-              correctAnswer: 'Mengimplementasikan Load Balancer dengan fitur auto-scaling, mengaktifkan Redis untuk caching query berulang, serta memproses antrean order secara asinkron menggunakan message broker seperti RabbitMQ.',
-              points: 50
-            }
-          }
-        ];
-
-        // Only inject if suggestions count is less than 4
-        setSuggestions(prev => {
-          if (prev.length < 4) {
-            const nextSug = generatorOptions[Math.floor(Math.random() * generatorOptions.length)];
-            return [...prev, { ...nextSug, id: `sug_${Date.now()}` }];
-          }
-          return prev;
-        });
-      }
-    ];
-
-    const interval = setInterval(() => {
-      const action = peerActions[Math.floor(Math.random() * peerActions.length)];
-      action();
-    }, 11000);
-
-    return () => clearInterval(interval);
-  }, []);
 
   // Save changes to current selected question (or create a new one)
   const handleSaveQuestionForm = (e: React.FormEvent) => {
@@ -346,36 +216,6 @@ export default function CollaborativeEditor({ quiz, username, groupCode, onSaveQ
     }
   };
 
-  // Trigger loading a mock peer suggestion directly into the list
-  const handleAcceptSuggestion = (sug: SuggestedQuestion) => {
-    const freshQuestion = {
-      ...sug.question,
-      id: `accepted_q_${Date.now()}`
-    };
-
-    setQuestions(prev => [...prev, freshQuestion]);
-    
-    // Remote from suggestion list
-    setSuggestions(prev => prev.filter(s => s.id !== sug.id));
-    
-    // Add edit feed log
-    const timestamp = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
-    setEvents(prev => [
-      {
-        id: `event_${Date.now()}`,
-        time: timestamp,
-        text: `berhasil mengusulkan Soal #${questions.length + 1} dan disetujui untuk ditambahkan ke kuis!`,
-        user: sug.user,
-        avatarColor: sug.user === 'Siti Rahma' ? 'bg-emerald-600' : 'bg-sky-600'
-      },
-      ...prev
-    ]);
-
-    // Select the newly added question
-    setSelectedQuestionIndex(questions.length);
-    setSuccessMsg(`Soal usulan dari ${sug.user} berhasil diimpor!`);
-  };
-
   // Save the entire quiz package modifications
   const handleFinalPublish = () => {
     if (!quizTitle.trim()) {
@@ -453,7 +293,7 @@ export default function CollaborativeEditor({ quiz, username, groupCode, onSaveQ
                 </div>
               ))}
               <span className="text-[9px] font-mono font-bold text-natural-text-dark pl-2">
-                +{peers.length} Teman Kelompok Aktif
+                {peers.length} Editor Aktif
               </span>
             </div>
 
@@ -850,77 +690,12 @@ export default function CollaborativeEditor({ quiz, username, groupCode, onSaveQ
           </div>
         </div>
 
-        {/* COLUMN 3: RIGHT PANEL - LIVE FEED & BOT SUGGESTIONS (Span 4) */}
+        {/* COLUMN 3: RIGHT PANEL - ACTIVITY FEED (Span 4) */}
         <div className="lg:col-span-4 flex flex-col gap-6">
-          
-          {/* A. Live Peer Suggestions Box */}
-          <div className="bg-white rounded-2xl border border-natural-border p-4 shadow-xs">
-            <div className="border-b border-natural-surface pb-3 mb-3 flex items-center gap-2">
-              <Sparkles className="w-4.5 h-4.5 text-natural-accent animate-pulse" />
-              <div>
-                <h4 className="text-xs font-mono font-bold text-natural-text-dark uppercase tracking-wider">
-                  Usulan Soal dari Teman ({suggestions.length})
-                </h4>
-                <p className="text-[9.5px] text-natural-text-muted">Rekomendasi dari Siti, Budi, & Andi</p>
-              </div>
-            </div>
-
-            <AnimatePresence mode="popLayout">
-              {suggestions.length === 0 ? (
-                <div className="p-6 text-center text-natural-text-muted text-xs italic font-serif">
-                  Belum ada draf baru yang diusulkan. Teman kelompok Anda sedang menyusun ide...
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {suggestions.map((sug) => (
-                    <motion.div
-                      key={sug.id}
-                      initial={{ opacity: 0, scale: 0.95 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      exit={{ opacity: 0, scale: 0.95 }}
-                      className="p-3 bg-natural-surface/40 border border-natural-border rounded-xl text-xs space-y-2"
-                    >
-                      <div className="flex justify-between items-center bg-white/75 border border-natural-border rounded-lg p-1.5 px-2">
-                        <span className="text-[9.5px] font-bold text-natural-primary flex items-center gap-1">
-                          <UserCheck className="w-3 h-3 text-natural-accent" />
-                          Ide: {sug.user}
-                        </span>
-                        <span className="text-[9px] font-mono font-bold bg-[#FFF5ED] text-natural-accent border border-natural-border-dark px-1.5 rounded uppercase">
-                          {sug.question.type === QuestionType.MULTIPLE_CHOICE && 'PG'}
-                          {sug.question.type === QuestionType.TRUE_FALSE && 'B/S'}
-                          {sug.question.type === QuestionType.SHORT_ANSWER && 'Isian'}
-                          {sug.question.type === QuestionType.ESSAY_CASE && 'Essay'}
-                        </span>
-                      </div>
-
-                      <p className="text-natural-text-dark font-semibold leading-relaxed text-xs">
-                        "{sug.question.questionText}"
-                      </p>
-
-                      <div className="flex justify-between items-center pt-1.5">
-                        <span className="text-[9.5px] text-natural-text-muted italic leading-none font-serif">
-                          Jawaban: {sug.question.correctAnswer.toUpperCase()}
-                        </span>
-                        
-                        <button
-                          onClick={() => handleAcceptSuggestion(sug)}
-                          className="px-2.5 py-1 bg-white border border-natural-border hover:bg-natural-primary hover:text-white rounded-lg text-[10px] font-bold text-natural-primary cursor-pointer transition-colors shadow-2xs flex items-center gap-1"
-                        >
-                          Tinjau & Impor
-                        </button>
-                      </div>
-                    </motion.div>
-                  ))}
-                </div>
-              )}
-            </AnimatePresence>
-          </div>
-
-          {/* B. Live Activity Event Logs Stream */}
           <div className="bg-white rounded-2xl border border-natural-border p-4 shadow-xs flex-1 flex flex-col">
             <h4 className="text-xs font-mono font-bold text-natural-text-dark uppercase tracking-wider border-b border-natural-surface pb-3 mb-3 flex items-center justify-between">
-              <span>Aktivitas Kolaborasi Stream</span>
-              <RefreshCw className="w-3.5 h-3.5 text-natural-text-muted animate-spin" />
+              <span>Log Aktivitas Editor</span>
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
             </h4>
 
             {/* Event list */}
