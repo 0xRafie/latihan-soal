@@ -38,6 +38,7 @@ drop policy if exists "Allow public quiz writes" on public.quizzes;
 drop policy if exists "Allow public quiz updates" on public.quizzes;
 drop policy if exists "Allow public attempt reads" on public.attempts;
 drop policy if exists "Allow public attempt writes" on public.attempts;
+drop policy if exists "Allow public attempt updates" on public.attempts;
 drop policy if exists "Allow public attempt deletes" on public.attempts;
 
 create policy "Allow public quiz reads"
@@ -59,6 +60,11 @@ create policy "Allow public attempt reads"
 
 create policy "Allow public attempt writes"
   on public.attempts for insert
+  with check (true);
+
+create policy "Allow public attempt updates"
+  on public.attempts for update
+  using (true)
   with check (true);
 
 create policy "Allow public attempt deletes"

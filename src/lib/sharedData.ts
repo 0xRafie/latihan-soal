@@ -130,6 +130,16 @@ export async function insertAttempt(attempt: Attempt, groupCode: string) {
   if (error) throw error;
 }
 
+export async function upsertAttempts(attempts: Attempt[], groupCode: string) {
+  if (!supabase || attempts.length === 0) return;
+
+  const { error } = await supabase
+    .from('attempts')
+    .upsert(attempts.map((attempt) => toAttemptRow(attempt, groupCode)), { onConflict: 'id' });
+
+  if (error) throw error;
+}
+
 export async function clearAttempts(groupCode: string) {
   if (!supabase) return;
 

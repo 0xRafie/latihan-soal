@@ -14,6 +14,7 @@ import {
   fetchQuizzes,
   insertAttempt,
   subscribeToGroupData,
+  upsertAttempts,
   upsertQuiz,
   upsertQuizzes,
 } from './lib/sharedData';
@@ -99,12 +100,15 @@ export default function App() {
       if (remoteQuizzes && remoteQuizzes.length > 0) {
         setQuizzes(remoteQuizzes);
       } else {
-        await upsertQuizzes(DEFAULT_QUIZZES, groupCode);
-        setQuizzes(DEFAULT_QUIZZES);
+        const localQuizzes = quizzes.length > 0 ? quizzes : DEFAULT_QUIZZES;
+        await upsertQuizzes(localQuizzes, groupCode);
+        setQuizzes(localQuizzes);
       }
 
-      if (remoteAttempts) {
+      if (remoteAttempts && remoteAttempts.length > 0) {
         setAttempts(remoteAttempts);
+      } else if (attempts.length > 0) {
+        await upsertAttempts(attempts, groupCode);
       }
     } catch (error) {
       console.error('Failed to sync Supabase data', error);
