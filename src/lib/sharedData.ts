@@ -115,6 +115,18 @@ export async function upsertQuizzes(quizzes: Quiz[], groupCode: string) {
   await Promise.all(quizzes.map((quiz) => upsertQuiz(quiz, groupCode)));
 }
 
+export async function deleteQuiz(quizId: string, groupCode: string, username: string) {
+  if (!supabase) return;
+
+  const { error } = await supabase.rpc('delete_quiz_if_creator', {
+    p_id: quizId,
+    p_group_code: groupCode,
+    p_username: username,
+  });
+
+  if (error) throw error;
+}
+
 export async function insertAttempt(attempt: Attempt, groupCode: string) {
   if (!supabase) return;
 

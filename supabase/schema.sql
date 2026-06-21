@@ -103,6 +103,26 @@ $$;
 grant execute on function public.merge_question_arrays(jsonb, jsonb) to anon, authenticated;
 grant execute on function public.upsert_quiz_merge_questions(text, text, text, text, integer, text, timestamptz, jsonb) to anon, authenticated;
 
+create or replace function public.delete_quiz_if_creator(
+  p_id text,
+  p_group_code text,
+  p_username text
+)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  delete from public.quizzes
+  where id = p_id
+    and group_code = p_group_code
+    and created_by = p_username;
+end;
+$$;
+
+grant execute on function public.delete_quiz_if_creator(text, text, text) to anon, authenticated;
+
 create table if not exists public.attempts (
   id text primary key,
   group_code text not null,

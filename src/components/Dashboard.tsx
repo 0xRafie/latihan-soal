@@ -35,9 +35,10 @@ interface DashboardProps {
   onAddQuiz: (quiz: Quiz) => void;
   onClearHistory: () => void;
   onEditQuizCollab: (quizId: string) => void;
+  onDeleteQuiz: (quizId: string) => void;
 }
 
-export default function Dashboard({ quizzes, attempts, username, onStartQuiz, onAddQuiz, onClearHistory, onEditQuizCollab }: DashboardProps) {
+export default function Dashboard({ quizzes, attempts, username, onStartQuiz, onAddQuiz, onClearHistory, onEditQuizCollab, onDeleteQuiz }: DashboardProps) {
   const [activeTab, setActiveTab] = useState<'quizzes' | 'create' | 'history'>('quizzes');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -222,6 +223,7 @@ export default function Dashboard({ quizzes, attempts, username, onStartQuiz, on
         const importedQuiz: Quiz = {
           ...jsonContent,
           id: `imported_${Date.now()}`,
+          createdBy: username,
           createdAt: new Date().toISOString()
         };
 
@@ -337,6 +339,7 @@ export default function Dashboard({ quizzes, attempts, username, onStartQuiz, on
               {quizzes.map((quiz) => {
                 const totalQuestionsCount = quiz.questions.length;
                 const essayQs = quiz.questions.filter(q => q.type === QuestionType.ESSAY_CASE).length;
+                const canDeleteQuiz = quiz.createdBy === username;
                 
                 return (
                   <motion.div
@@ -355,14 +358,25 @@ export default function Dashboard({ quizzes, attempts, username, onStartQuiz, on
                           </p>
                         </div>
 
-                        {/* Export Action */}
-                        <button
-                          onClick={() => handleExportQuiz(quiz)}
-                          title="Ekspor Paket Soal (Kirim ke Teman)"
-                          className="w-8 h-8 rounded-full text-natural-text-muted hover:text-natural-primary hover:bg-natural-surface flex items-center justify-center cursor-pointer transition-colors"
-                        >
-                          <Download className="w-4 h-4" />
-                        </button>
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={() => handleExportQuiz(quiz)}
+                            title="Ekspor Paket Soal (Kirim ke Teman)"
+                            className="w-8 h-8 rounded-full text-natural-text-muted hover:text-natural-primary hover:bg-natural-surface flex items-center justify-center cursor-pointer transition-colors"
+                          >
+                            <Download className="w-4 h-4" />
+                          </button>
+
+                          {canDeleteQuiz && (
+                            <button
+                              onClick={() => onDeleteQuiz(quiz.id)}
+                              title="Hapus Paket Soal"
+                              className="w-8 h-8 rounded-full text-natural-text-muted hover:text-red-700 hover:bg-red-50 flex items-center justify-center cursor-pointer transition-colors"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          )}
+                        </div>
                       </div>
 
                       <p className="text-xs text-natural-text-dark/85 leading-relaxed line-clamp-2">

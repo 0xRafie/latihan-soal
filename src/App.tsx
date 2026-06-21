@@ -10,6 +10,7 @@ import { Quiz, Attempt, QuestionType } from './types';
 import { isSupabaseConfigured } from './lib/supabase';
 import {
   clearAttempts,
+  deleteQuiz,
   fetchAttempts,
   fetchQuizzes,
   insertAttempt,
@@ -304,6 +305,33 @@ export default function App() {
     setActiveView('collab');
   };
 
+  const handleDeleteQuizPackage = async (quizId: string) => {
+    if (!session) return;
+
+    const targetQuiz = quizzes.find((quiz) => quiz.id === quizId);
+    if (!targetQuiz) return;
+
+    if (targetQuiz.createdBy !== session.username) {
+      alert('Paket soal hanya bisa dihapus oleh pembuatnya.');
+      return;
+    }
+
+    if (!window.confirm(`Yakin ingin menghapus paket soal "${targetQuiz.title}"? Tindakan ini tidak dapat dibatalkan.`)) {
+      return;
+    }
+
+    setQuizzes((prev) => prev.filter((quiz) => quiz.id !== quizId));
+
+    if (isSupabaseConfigured) {
+      try {
+        await deleteQuiz(quizId, session.groupCode, session.username);
+      } catch (error) {
+        console.error('Failed to delete quiz in Supabase', error);
+        setSyncNotice('Paket soal terhapus lokal, tetapi gagal menghapus data Supabase.');
+      }
+    }
+  };
+
   const handleSaveCollabQuiz = async (updatedQuiz: Quiz) => {
     setQuizzes((prev) => prev.map((q) => (q.id === updatedQuiz.id ? updatedQuiz : q)));
 
@@ -377,6 +405,7 @@ export default function App() {
                 onAddQuiz={handleAddNewPublishedQuiz}
                 onClearHistory={handleClearAttemptsHistory}
                 onEditQuizCollab={handleEditQuizCollab}
+                onDeleteQuiz={handleDeleteQuizPackage}
               />
             </motion.div>
           )}

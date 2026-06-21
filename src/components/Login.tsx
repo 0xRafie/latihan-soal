@@ -6,6 +6,7 @@
 import React, { useState } from 'react';
 import { motion } from 'motion/react';
 import { BookOpen, Key, User, ShieldAlert } from 'lucide-react';
+import { formatGroupCodes, isValidGroupCode, normalizeGroupCode, VALID_GROUP_CODES } from '../lib/groupCodes';
 
 interface LoginProps {
   onLogin: (username: string, groupCode: string) => void;
@@ -36,10 +37,9 @@ export default function Login({ onLogin }: LoginProps) {
       return;
     }
 
-    // Accept both case variations, we will normalise the code
-    const normalizedCode = trimmedCode.toUpperCase();
-    if (normalizedCode !== 'BELAJAR123' && normalizedCode !== 'KELOMPOK1') {
-      setError('Kode akses grup salah! Gunakan kode akses "BELAJAR123" atau "KELOMPOK1" untuk masuk.');
+    const normalizedCode = normalizeGroupCode(trimmedCode);
+    if (!isValidGroupCode(normalizedCode)) {
+      setError(`Kode akses grup salah! Gunakan kode akses ${formatGroupCodes()} untuk masuk.`);
       return;
     }
 
@@ -115,7 +115,7 @@ export default function Login({ onLogin }: LoginProps) {
                   Kode Akses Grup
                 </label>
                 <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-natural-surface text-natural-primary uppercase border border-natural-border">
-                  BELAJAR123
+                  {VALID_GROUP_CODES[0]}
                 </span>
               </div>
               <div className="relative rounded-lg shadow-sm">
@@ -134,7 +134,12 @@ export default function Login({ onLogin }: LoginProps) {
                 />
               </div>
               <p className="mt-1.5 text-xs text-natural-text-muted leading-relaxed">
-                Tanyakan kode akses kepada teman Anda atau ketik <span className="font-semibold text-natural-accent bg-natural-surface px-1 py-0.2 rounded border border-natural-border">BELAJAR123</span> atau <span className="font-semibold text-natural-accent bg-natural-surface px-1 py-0.2 rounded border border-natural-border">KELOMPOK1</span> untuk demo.
+                Tanyakan kode akses kepada teman Anda atau ketik {VALID_GROUP_CODES.map((code, index) => (
+                  <React.Fragment key={code}>
+                    {index > 0 ? ' atau ' : ''}
+                    <span className="font-semibold text-natural-accent bg-natural-surface px-1 py-0.2 rounded border border-natural-border">{code}</span>
+                  </React.Fragment>
+                ))} untuk demo.
               </p>
             </div>
 
